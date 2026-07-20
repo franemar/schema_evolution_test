@@ -1,0 +1,2 @@
+{"id": 10, "name": "X", "metadata": {"role": "user", "signup_date": "2026-04-10", "country": 2}}
+{"id": 11, "name": "Y", "metadata": [{"role": "user", "signup_date": null},{"role": "admin", "signup_date": "2026-04-10", "country": 2}]}
