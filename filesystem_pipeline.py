@@ -4,12 +4,61 @@ from typing import Iterator
 
 import dlt
 from dlt.sources import TDataItems
-from dlt.sources.filesystem import filesystem, readers, read_jsonl
-from dlt.common.storages.fsspec_filesystem import FileItemDict
+
+try:
+    from dlt.sources.filesystem import FileItemDict, filesystem, readers, read_jsonl  # type: ignore
+except ImportError:
+    from filesystem import (
+        FileItemDict,
+        filesystem,
+        readers,
+        read_jsonl,
+    )
 
 # where the test files are, those examples work with (url)
-TESTS_BUCKET_URL = "samples"
+TESTS_BUCKET_URL = "_storage/samples"
 STORAGE_DIR = "_storage"
+
+def copy_files_resource(local_folder: str) -> None:
+    """Demonstrates how to copy files locally by adding a step to filesystem resource and the to load the download listing to db"""
+    pipeline = dlt.pipeline(
+        pipeline_name="standard_filesystem_copy",
+        destination='duckdb',
+        dataset_name="standard_filesystem_data",
+    )
+
+    # a step that copies files into test storage
+    def _copy(item: FileItemDict) -> FileItemDict:
+        # instantiate fsspec and copy file
+        dest_file = os.path.join(local_folder, item["relative_path"])
+        # create dest folder
+        os.makedirs(os.path.dirname(dest_file), exist_ok=True)
+        # download file
+        item.fsspec.download(item["file_url"], dest_file)
+        # return file item unchanged
+        return item
+
+    # use recursive glob pattern and add file copy step
+    downloader = filesystem(TESTS_BUCKET_URL, file_glob="**").add_map(_copy)
+    ## debug
+    #return
+
+    # NOTE: you do not need to load any data to execute extract, below we obtain
+    # a list of files in a bucket and also copy them locally
+    listing = list(downloader)
+    print(listing)
+    ## debug
+    #return
+
+    extract_info = pipeline.extract(downloader.with_name("listing"))
+    print(extract_info)
+
+    ## download to table "listing"
+    #load_info = pipeline.run(downloader.with_name("listing"), write_disposition="replace")
+    ## pretty print the information on data that was loaded
+    #print(load_info)
+    print(pipeline.last_trace.last_normalize_info)
+
 
 def read_jsonl_chunked(local_folder: str) -> None:
     pipeline = dlt.pipeline(
@@ -132,41 +181,6 @@ def read_custom_file_type_excel() -> None:
     print(load_info)
 
 
-def copy_files_resource(local_folder: str) -> None:
-    """Demonstrates how to copy files locally by adding a step to filesystem resource and the to load the download listing to db"""
-    pipeline = dlt.pipeline(
-        pipeline_name="standard_filesystem_copy",
-        destination='duckdb',
-        dataset_name="standard_filesystem_data",
-    )
-
-    # a step that copies files into test storage
-    def _copy(item: FileItemDict) -> FileItemDict:
-        # instantiate fsspec and copy file
-        dest_file = os.path.join(local_folder, item["relative_path"])
-        # create dest folder
-        os.makedirs(os.path.dirname(dest_file), exist_ok=True)
-        # download file
-        item.fsspec.download(item["file_url"], dest_file)
-        # return file item unchanged
-        return item
-
-    # use recursive glob pattern and add file copy step
-    downloader = filesystem(TESTS_BUCKET_URL, file_glob="**").add_map(_copy)
-
-    # NOTE: you do not need to load any data to execute extract, below we obtain
-    # a list of files in a bucket and also copy them locally
-    # listing = list(downloader)
-    # print(listing)
-
-    # download to table "listing"
-    # downloader = filesystem(TESTS_BUCKET_URL, file_glob="**").add_map(_copy)
-    load_info = pipeline.run(downloader.with_name("listing"), write_disposition="replace")
-    # pretty print the information on data that was loaded
-    print(load_info)
-    print(pipeline.last_trace.last_normalize_info)
-
-
 def read_files_incrementally_mtime() -> None:
     pipeline = dlt.pipeline(
         pipeline_name="standard_filesystem_incremental",
@@ -193,9 +207,9 @@ def read_files_incrementally_mtime() -> None:
 
 
 if __name__ == "__main__":
-    #copy_files_resource("{STORAGE_DIR}/landing")
+    copy_files_resource(f"{STORAGE_DIR}/landing")
     #stream_and_merge_csv()
-    read_jsonl_chunked(f"{STORAGE_DIR}/landing")
+    #read_jsonl_chunked(f"{STORAGE_DIR}/landing")
     #read_custom_file_type_excel()
     #read_files_incrementally_mtime()
     #read_csv_with_duckdb()
